@@ -131,12 +131,13 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
         esp_wifi_connect();
         break;
     case WIFI_EVENT_STA_CONNECTED:
-        ESP_LOGI(TAG, "Wi-Fi STA connected to AP");
+        ESP_LOGI(TAG, "Wi-Fi STA connected to AP (L2 Bridge Mode - No IP)");
         s_sta_is_connected = true;
         esp_wifi_internal_reg_rxcb(WIFI_IF_STA, pkt_wifi2eth);
         // Get WiFi MAC and set it to Ethernet
         esp_wifi_get_mac(WIFI_IF_STA, s_wifi_mac);
         esp_eth_ioctl(s_eth_handle, ETH_CMD_S_MAC_ADDR, s_wifi_mac);
+        ESP_LOGI(TAG, "L2 Bridge established: WiFi MAC " MACSTR " set to Ethernet", MAC2STR(s_wifi_mac));
         break;
     case WIFI_EVENT_STA_DISCONNECTED:
         ESP_LOGI(TAG, "Wi-Fi STA disconnected from AP");
@@ -144,20 +145,6 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
         esp_wifi_internal_reg_rxcb(WIFI_IF_STA, NULL);
         ESP_LOGI(TAG, "Reconnecting to AP...");
         esp_wifi_connect();
-        break;
-    default:
-        break;
-    }
-}
-
-// Event handler for IP events
-static void ip_event_handler(void *arg, esp_event_base_t event_base,
-                             int32_t event_id, void *event_data)
-{
-    switch (event_id) {
-    case IP_EVENT_STA_GOT_IP:
-        ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
-        ESP_LOGI(TAG, "Got IP Address:" IPSTR, IP2STR(&event->ip_info.ip));
         break;
     default:
         break;
@@ -184,7 +171,6 @@ static void initialize_ethernet(void)
 static void initialize_wifi(void)
 {
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler, NULL));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, ip_event_handler, NULL));
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
