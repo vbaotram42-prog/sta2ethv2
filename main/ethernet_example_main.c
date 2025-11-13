@@ -153,6 +153,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 
 static void initialize_ethernet(void)
 {
+    ESP_LOGI(TAG, "Initializing Ethernet in L2 bridge mode (no IP stack)");
     uint8_t eth_port_cnt = 0;
     esp_eth_handle_t *eth_handles;
     ESP_ERROR_CHECK(example_eth_init(&eth_handles, &eth_port_cnt));
@@ -161,19 +162,28 @@ static void initialize_ethernet(void)
     }
     s_eth_handle = eth_handles[0];
     free(eth_handles);
+    
+    // Set up L2 packet forwarding - no IP processing
     ESP_ERROR_CHECK(esp_eth_update_input_path(s_eth_handle, pkt_eth2wifi, NULL));
+    
+    // Enable promiscuous mode to receive all packets for bridging
     bool eth_promiscuous = true;
     ESP_ERROR_CHECK(esp_eth_ioctl(s_eth_handle, ETH_CMD_S_PROMISCUOUS, &eth_promiscuous));
+    ESP_LOGI(TAG, "Ethernet promiscuous mode enabled for L2 bridging");
+    
     ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID, eth_event_handler, NULL));
     ESP_ERROR_CHECK(esp_eth_start(s_eth_handle));
 }
 
 static void initialize_wifi(void)
 {
+    ESP_LOGI(TAG, "Initializing WiFi in L2 bridge mode (no IP stack)");
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler, NULL));
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
     ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
+    
+    // Configure WiFi STA for L2 bridge mode
     wifi_config_t wifi_config = {
         .sta = {
             .ssid = "xinxin",
@@ -183,6 +193,11 @@ static void initialize_wifi(void)
     };
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+    
+    // Note: No esp_netif is created for WiFi, ensuring pure L2 operation
+    // WiFi will operate in bridge mode using esp_wifi_internal_* APIs
+    ESP_LOGI(TAG, "WiFi configured for L2-only operation (slave/STA side)");
+    
     ESP_ERROR_CHECK(esp_wifi_start());
 }
 
@@ -203,14 +218,24 @@ static esp_err_t initialize_flow_control(void)
 
 void app_main(void)
 {
+    ESP_LOGI(TAG, "=== STA2ETH L2 Bridge Mode ===");
+    ESP_LOGI(TAG, "Starting pure Layer 2 bridge: WiFi STA (slave) <-> Ethernet");
+    ESP_LOGI(TAG, "No IP stack - transparent packet forwarding only");
+    
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+    
+    // Create event loop but do NOT initialize esp_netif (no IP stack)
     ESP_ERROR_CHECK(esp_event_loop_create_default());
+    ESP_LOGI(TAG, "Event loop created (esp_netif NOT initialized - L2 only)");
+    
     ESP_ERROR_CHECK(initialize_flow_control());
     initialize_wifi();
     initialize_ethernet();
+    
+    ESP_LOGI(TAG, "L2 bridge initialization complete");
 }
